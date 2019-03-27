@@ -4,10 +4,11 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+
 from bs4 import BeautifulSoup
 
-#import arrow
-#import bibtexparser
+import arrow
+import bibtexparser
 import codecs
 import hashlib
 import pprint
@@ -69,7 +70,7 @@ def _handle_captcha(url):
 def _get_page(pagerequest):
     """Return the data for a page on scholar.google.com"""
     # Note that we include a sleep to avoid overloading the scholar server
-    time.sleep(1 + random.uniform(0, 3))
+    time.sleep(5+random.uniform(0, 5))
     resp = _SESSION.get(pagerequest, headers=_HEADERS, cookies=_COOKIES)
     if resp.status_code == 200:
         return resp.text
@@ -89,13 +90,14 @@ def _get_page(pagerequest):
 def _get_soup(pagerequest):
     """Return the BeautifulSoup for a page on scholar.google.com"""
     html = _get_page(pagerequest)
+    html = html.replace(u'\xa0', u' ')
     return BeautifulSoup(html, 'html.parser')
 
 
 def _search_scholar_soup(soup):
     """Generator that returns Publication objects from the search page"""
     while True:
-        for row in soup.find_all('div', 'gs_r'):
+        for row in soup.find_all('div', 'gs_or'):
             yield Publication(row, 'scholar')
         if soup.find(class_='gs_ico gs_ico_nav_next'):
             url = soup.find(class_='gs_ico gs_ico_nav_next').parent['href']
@@ -223,17 +225,17 @@ class Author(object):
             self.id = __data
         else:
             self.id = re.findall(_CITATIONAUTHRE, __data('a')[0]['href'])[0]
-            self.url_picture = __data('img')[0]['src']
-            self.name = __data.find('h3', class_='gsc_oai_name').text
-            affiliation = __data.find('div', class_='gsc_oai_aff')
+            self.url_picture = _HOST+'/citations?view_op=medium_photo&user={}'.format(self.id)
+            self.name = __data.find('h3', class_='gs_ai_name').text
+            affiliation = __data.find('div', class_='gs_ai_aff')
             if affiliation:
                 self.affiliation = affiliation.text
-            email = __data.find('div', class_='gsc_oai_eml')
+            email = __data.find('div', class_='gs_ai_eml')
             if email:
                 self.email = re.sub(_EMAILAUTHORRE, r'@', email.text)
             self.interests = [i.text.strip() for i in
-                              __data.find_all('a', class_='gsc_oai_one_int')]
-            citedby = __data.find('div', class_='gsc_oai_cby')
+                              __data.find_all('a', class_='gs_ai_one_int')]
+            citedby = __data.find('div', class_='gs_ai_cby')
             if citedby and citedby.text != '':
                 self.citedby = int(citedby.text[9:])
         self._filled = False
@@ -246,11 +248,12 @@ class Author(object):
         self.name = soup.find('div', id='gsc_prf_in').text
         self.affiliation = soup.find('div', class_='gsc_prf_il').text
         self.interests = [i.text.strip() for i in soup.find_all('a', class_='gsc_prf_inta')]
-        self.url_picture = soup.find('img')['src']
-
+        
         # h-index, i10-index and h-index, i10-index in the last 5 years
         index = soup.find_all('td', class_='gsc_rsb_std')
         if index:
+            self.citedby = int(index[0].text)
+            self.citedby5y = int(index[1].text)
             self.hindex = int(index[2].text)
             self.hindex5y = int(index[3].text)
             self.i10index = int(index[4].text)
@@ -262,6 +265,15 @@ class Author(object):
         years = [int(y.text) for y in soup.find_all('span', class_='gsc_g_t')]
         cites = [int(c.text) for c in soup.find_all('span', class_='gsc_g_al')]
         self.cites_per_year = dict(zip(years, cites))
+
+        # co-authors
+        self.coauthors = []
+        for row in soup.find_all('span', class_='gsc_rsb_a_desc'):
+            new_coauthor = Author(re.findall(_CITATIONAUTHRE, row('a')[0]['href'])[0])
+            new_coauthor.name = row.find(tabindex="-1").text
+            new_coauthor.affiliation = row.find(class_="gsc_rsb_a_ext").text
+            self.coauthors.append(new_coauthor)
+
 
         self.publications = list()
         pubstart = 0
@@ -275,6 +287,7 @@ class Author(object):
                 soup = _get_soup(_HOST+url)
             else:
                 break
+
         self._filled = True
         return self
 
@@ -315,8 +328,3 @@ def search_author_custom_url(url):
     URL should be of the form '/citation?q=...'"""
     soup = _get_soup(_HOST+url)
     return _search_citation_soup(soup)
-
-
-if __name__ == "__main__":
-    author = next(search_author('Steven A. Cholewiak')).fill()
-    print(author)
