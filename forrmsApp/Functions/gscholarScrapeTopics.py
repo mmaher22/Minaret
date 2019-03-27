@@ -32,13 +32,13 @@ def gscholarScrapeTopics(topicsLst, driver):
         prevNext = []
         PrevNextURL = ''
 
-        while True:
-            authors = driver.find_elements_by_xpath('//*[@class="gsc_1usr gs_scl"]')
+        while True:  
+            authors = driver.find_elements_by_xpath('//*[@id="gsc_sa_ccl"]/div/div/div')		
             for author in authors:
                 try:
-                    name = author.find_element_by_xpath('.//h3[@class="gsc_oai_name"]/a').get_attribute('innerHTML')
+                    name = author.find_element_by_xpath('.//h3[@class="gs_ai_name"]/a').get_attribute('innerHTML')
                     # Scrape Link here....... and pass it to cacheScrapedAuthor
-                    link = author.find_element_by_xpath('.//h3[@class="gsc_oai_name"]/a').get_attribute('href')
+                    link = author.find_element_by_xpath('.//h3[@class="gs_ai_name"]/a').get_attribute('href')
                     names.append(name)
                     urls.append(link)
                 except:
@@ -54,7 +54,6 @@ def gscholarScrapeTopics(topicsLst, driver):
 
             if prevNext == None or len(urls) > maxRevs or len(prevNext) == 0:
                 break
-
             driver.get(PrevNextURL)
         if (len(urls) > maxRevs):
             break
